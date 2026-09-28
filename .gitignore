@@ -1,0 +1,14 @@
+# Codex team temporary workspace
+tmp/*
+!tmp/.gitkeep
+
+# Local quality gate command configuration can be repo-specific
+.codex/quality-gate.env.local
+
+# Common local secrets
+.env
+.env.*
+!.env.example
+
+# OS/editor noise
+.DS_Store
