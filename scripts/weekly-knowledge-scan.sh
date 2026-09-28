@@ -53,8 +53,8 @@ if [[ "$CODEX_EXECUTABLE" != /* ]]; then
   exit 64
 fi
 for required in \
-  "$REPO_ROOT/docs/00-governance/weekly-knowledge-scan.md" \
-  "$REPO_ROOT/docs/00-governance/weekly-scan-status.md" \
+  "$REPO_ROOT/.agents/departments/governance/processes/weekly-knowledge-scan.md" \
+  "$REPO_ROOT/.agents/departments/governance/knowledge/weekly-scan-status.md" \
   "$REPO_ROOT/.agents/skills/weekly-knowledge-scan/SKILL.md"; do
   if [[ ! -f "$required" ]]; then
     echo "Required weekly scan instruction missing: $required" >&2
@@ -68,7 +68,7 @@ if [[ "${1:-}" == "--dry-run" ]]; then
   echo "Schedule: launchd Monday 09:00 in the Mac's local time zone"
   echo "Run limit: $MAX_SECONDS seconds total, $ROLE_SECONDS seconds per role; one scheduled attempt per ISO week"
   echo "Manual recovery: --retry-failed permits one retry after a recorded failure"
-  echo "Mode: pinned HTTPS sources, 15 tool-free role calls, candidate report only"
+  echo "Mode: pinned HTTPS sources, 16 tool-free role calls, candidate report only"
   exit 0
 fi
 
@@ -335,8 +335,8 @@ while IFS='|' read -r ROLE SLUG; do
 done < <(/usr/bin/perl "$SCRIPT_DIR/helper.pl" roster)
 if [[ "$RUN_RC" -eq 0 ]]; then
   ROLE_ROWS="$(/usr/bin/grep -c '^| ' "$CANDIDATE_REPORT" || true)"
-  if [[ "$ROLE_ROWS" -ne 17 ]]; then
-    echo "Candidate report did not contain exactly 15 role rows." >>"$RUN_LOG"
+  if [[ "$ROLE_ROWS" -ne 18 ]]; then
+    echo "Candidate report did not contain exactly 16 role rows." >>"$RUN_LOG"
     RUN_RC=65
   fi
 fi

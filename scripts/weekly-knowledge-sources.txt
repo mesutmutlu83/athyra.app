@@ -2,6 +2,7 @@
 apple-releases|Product Manager,Product Owner,iOS Developer,QA Engineer|https://developer.apple.com/news/releases/
 apple-review|Product Manager,Product Owner|https://developer.apple.com/app-store/review/guidelines/
 strava-press|Product Researcher|https://press.strava.com/
+apple-ads-news|Marketing Specialist|https://ads.apple.com/news
 w3c-wcag|UX/UI Designer,Frontend Engineer,QA Engineer|https://www.w3.org/WAI/standards-guidelines/wcag/
 cloudflare-changelog|System Architect,Backend Engineer,Frontend Engineer,DevOps/SRE|https://developers.cloudflare.com/changelog/
 neon-changelog|System Architect,DB Architect,DevOps/SRE|https://neon.com/blog/category/changelog

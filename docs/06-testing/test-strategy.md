@@ -12,4 +12,4 @@ Required layers:
 - Real provider sandbox/application tests kept distinct from mocks and synthetic fixtures.
 - Security/privacy negative tests and deletion/retention recovery tests.
 
-The test-framework decision is accepted. `.codex/quality-gate.env` remains unconfigured until real commands exist; selecting tools does not constitute installed or passing test capability.
+The test-framework decision is accepted. No runnable quality commands are configured until real projects and manifests exist; selecting tools does not constitute installed or passing test capability.

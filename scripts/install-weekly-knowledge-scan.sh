@@ -68,8 +68,37 @@ cp "$SCRIPT_DIR/weekly-knowledge-sources.txt" "$TEMP_BUNDLE/sources.txt"
 /usr/bin/shasum -a 256 "$CODEX_EXECUTABLE" | /usr/bin/awk '{print $1}' \
   >"$TEMP_BUNDLE/codex-sha256.txt"
 : >"$TEMP_BUNDLE/.athyra-weekly-generated"
-/usr/bin/rsync -a "$REPO_ROOT/.codex/agents/" "$TEMP_BUNDLE/agents/"
+if [[ -n "$(/usr/bin/find "$REPO_ROOT/.codex/agents" -type l -print -quit)" ]]; then
+  echo "Agent profile tree contains a symlink; refusing installation." >&2
+  exit 65
+fi
+PROFILE_COUNT=0
+while IFS= read -r -d '' profile; do
+  profile_name="${profile##*/}"
+  if [[ -e "$TEMP_BUNDLE/agents/$profile_name" ]]; then
+    echo "Duplicate agent profile filename: $profile_name" >&2
+    exit 65
+  fi
+  cp "$profile" "$TEMP_BUNDLE/agents/$profile_name"
+  PROFILE_COUNT=$((PROFILE_COUNT + 1))
+done < <(/usr/bin/find "$REPO_ROOT/.codex/agents" -type f -name '*.toml' -print0)
+EXPECTED_PROFILE_COUNT="$(/usr/bin/perl "$SCRIPT_DIR/weekly-knowledge-scan-helper.pl" roster | /usr/bin/wc -l | /usr/bin/tr -d '[:space:]')"
+if [[ "$PROFILE_COUNT" -ne "$EXPECTED_PROFILE_COUNT" ]]; then
+  echo "Expected $EXPECTED_PROFILE_COUNT agent profiles; found $PROFILE_COUNT." >&2
+  exit 65
+fi
+while IFS='|' read -r role slug; do
+  if [[ ! -f "$TEMP_BUNDLE/agents/$slug.toml" ]]; then
+    echo "Missing agent profile for $role: $slug.toml" >&2
+    exit 65
+  fi
+done < <(/usr/bin/perl "$SCRIPT_DIR/weekly-knowledge-scan-helper.pl" roster)
 for skill_name in weekly-knowledge-scan knowledge-management; do
+  skill_dir="$(cd "$REPO_ROOT/.agents/skills/$skill_name" && pwd -P)"
+  if [[ "$skill_dir" != "$REPO_ROOT"/* ]]; then
+    echo "Skill source resolves outside the repository: $skill_name" >&2
+    exit 65
+  fi
   mkdir -p "$TEMP_BUNDLE/skills/$skill_name"
   cp "$REPO_ROOT/.agents/skills/$skill_name/SKILL.md" \
     "$TEMP_BUNDLE/skills/$skill_name/SKILL.md"

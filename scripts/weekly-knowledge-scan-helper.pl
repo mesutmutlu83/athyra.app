@@ -9,6 +9,7 @@ my @roles = (
   ['Product Manager', 'product-manager'],
   ['Product Owner', 'product-owner'],
   ['Product Researcher', 'product-researcher'],
+  ['Marketing Specialist', 'marketing-specialist'],
   ['UX/UI Designer', 'ux-ui-designer'],
   ['System Architect', 'system-architect'],
   ['DB Architect', 'db-architect'],
@@ -61,7 +62,7 @@ if ($mode eq 'packet') {
   my $profile = read_file("$bundle/agents/$slugs{$role}.toml", 10000);
   my $weekly_skill = read_file("$bundle/skills/weekly-knowledge-scan/SKILL.md", 20000);
   my $knowledge_skill = read_file("$bundle/skills/knowledge-management/SKILL.md", 20000);
-  my $runbook = read_file("$repo/docs/00-governance/weekly-knowledge-scan.md", 30000);
+  my $runbook = read_file("$repo/.agents/departments/governance/processes/weekly-knowledge-scan.md", 30000);
   my $strategy = read_file("$repo/docs/01-product/strategy.md", 20000);
   my $stack = read_file("$repo/docs/04-engineering/tech-stack.md", 20000);
   for ($profile, $weekly_skill, $knowledge_skill, $strategy, $stack) { $_ = substr($_, 0, 6000); }

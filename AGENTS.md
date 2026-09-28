@@ -14,7 +14,7 @@ If instructions compete, apply this order:
 5. adaptive orchestration;
 6. token/context/output efficiency.
 
-Token efficiency removes duplication and unnecessary work; it never removes a check required by actual risk. See `docs/00-governance/rule-precedence.md`.
+Token efficiency removes duplication and unnecessary work; it never removes a check required by actual risk. See `.agents/departments/governance/rules/rule-precedence.md`.
 
 ## 1. Adaptive orchestration
 
@@ -54,6 +54,7 @@ Load only skills required by the current route. Detailed rules live in skills so
 Use when triggered:
 - discovery/scope: `intake-discovery`, `product-management`;
 - market/competitor evidence: `market-intelligence`, `competitor-research`;
+- positioning, audience context, or go-to-market proposals: `product-marketing`;
 - UX: `ux-product-design`;
 - architecture: `architecture-design`;
 - actual stack/version behavior: `stack-specific-engineering`;
@@ -68,6 +69,7 @@ Use when triggered:
 - required static review: `code-review`;
 - runtime/CI/deploy: `devops-sre`;
 - persistent docs: `documentation-governance`;
+- new project or initial brief: `project-bootstrap` (complete app-doc scaffold and per-document source coverage);
 - durable findings/lessons and domain knowledge: `knowledge-management`;
 - evidence-based review of actual agent runs before skill/prompt/routing changes: `agent-run-review`;
 - scheduled weekly external evidence review: `weekly-knowledge-scan`;
@@ -138,16 +140,20 @@ Avoid overlapping full analyses:
 - Code Reviewer: independent static diff/correctness/maintainability/architecture plausibility; consume QA evidence rather than rerunning QA.
 - DevOps/SRE: CI/CD/runtime/deployment/observability/rollback.
 - Documentation: reconcile durable canonical docs only when needed.
+- Marketing Specialist: evidence-backed positioning, messaging, and go-to-market proposals within approved scope; PM retains product strategy and commercial decisions.
 
 ## 7. Documentation and workspace hygiene
 
 Persistent documentation lives under `docs/` using `docs/README.md`. Feature-specific durable material lives under `docs/features/<FEATURE-ID>/`; material architecture decisions under `docs/03-architecture/adrs/`.
+At project bootstrap, create every required app document from the shared manifest and audit the initial brief against every app Markdown, including existing decisions and features. Report unresolved facts and decisions through `docs/01-product/document-coverage.md`; never infer implementation from the brief.
 
-Each domain owns its canonical knowledge and reusable lessons under the existing `docs/` information architecture. Follow `docs/00-governance/knowledge-management.md`: on a task change, verified finding, incident, or relevant external discovery, assess affected docs and update them in the same work cycle. Record source and checked date for time-sensitive claims; distinguish evidence from proposals. External claims require verification before becoming canonical. Read-only agents hand off evidence-backed deltas. Material decisions still follow the Human Decision Gate. This event-driven rule does not imply continuous internet monitoring.
+Use the relevant `.agents/departments/<department>/README.md` workspace to find its agent prompts, skills, rules, processes, and agent knowledge. Agent prompts live in `.codex/agents/<department>/`; `.agents/skills/` holds discovery symlinks to the department-owned skills. Shared gates stay in this file and `.agents/departments/governance/`; do not duplicate them in department files.
 
-The weekly external scan follows `docs/00-governance/weekly-knowledge-scan.md` and `weekly-knowledge-scan`. Each configured specialist assesses its own area; the root coordinates one bounded run. Record no-change and failed checks as well as findings. The scan never changes approved scope or production configuration by itself.
+Application facts stay in `docs/`; agent workflow knowledge and lessons stay under `.agents/departments/<department>/knowledge/`. Follow `.agents/departments/governance/processes/knowledge-management.md`: on a task change, verified finding, incident, or relevant external discovery, assess the affected canonical documents and update them in the same work cycle. Record source and checked date for time-sensitive claims; distinguish evidence from proposals. External claims require verification before becoming canonical. Read-only agents hand off evidence-backed deltas. Material decisions still follow the Human Decision Gate. This event-driven rule does not imply continuous internet monitoring.
 
-At handoff, record material agent-system failures or repeated friction under `docs/00-governance/agent-effectiveness.md`. Review the affected real run when an issue occurs, and review available runs in a monthly batch; change skills, prompts, or routing only from supporting evidence. Do not store raw transcripts or invent quality scores. At intake, PM checks both that monthly review and the product review due date in `docs/01-product/outcome-measurement.md` when product work is in scope; due reviews record a result and next date. Product targets remain unset until evidence and the required human decision exist.
+The weekly external scan follows `.agents/departments/governance/processes/weekly-knowledge-scan.md` and `weekly-knowledge-scan`. Each configured specialist assesses its own area; the root coordinates one bounded run. Record no-change and failed checks as well as findings. The scan never changes approved scope or production configuration by itself.
+
+At handoff, record material agent-system failures or repeated friction under `.agents/departments/governance/knowledge/agent-effectiveness.md`. Review the affected real run when an issue occurs, and review available runs in a monthly batch; change skills, prompts, or routing only from supporting evidence. Do not store raw transcripts or invent quality scores. At intake, PM checks both that monthly review and the product review due date in `docs/01-product/outcome-measurement.md` when product work is in scope; due reviews record a result and next date. Product targets remain unset until evidence and the required human decision exist.
 
 Temporary analysis, debug logs, generated scratch output, experiments, screenshots, and downloaded references go under `tmp/<task-or-feature-id>/<role>/`. `tmp/` is non-deliverable.
 
