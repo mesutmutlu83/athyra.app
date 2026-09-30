@@ -39,6 +39,8 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tarfile
 import tempfile
 
@@ -46,12 +48,16 @@ home = Path(os.environ['SOURCE_HOME']).resolve()
 output = Path(os.environ['BUNDLE_OUTPUT'])
 team = home / '.agents/codex-team'
 codex = home / '.codex'
+claude = home / '.claude'
 required = [team / 'departments', team / 'scripts', team / 'README.md',
+            team / 'templates/claude/CLAUDE.md', claude / 'CLAUDE.md',
             codex / 'AGENTS.md', codex / 'config.toml', codex / 'rules/team.rules',
             codex / 'agents/README.md']
 for path in required:
     if not path.exists():
         raise SystemExit(f'Missing shared-team source: {path}')
+subprocess.run([sys.executable, str(team / 'scripts/sync-claude-team.py'),
+                '--home', str(home), '--check'], check=True)
 
 payload = {}
 credential_pattern = re.compile(rb'(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----')
@@ -77,7 +83,8 @@ def add_file(source, destination):
     payload[destination] = (data, source.stat().st_mode & 0o777)
 
 for base, prefix in ((team / 'departments', 'team/departments'),
-                     (team / 'scripts', 'team/scripts')):
+                     (team / 'scripts', 'team/scripts'),
+                     (team / 'templates/claude', 'team/templates/claude')):
     for source in sorted(base.rglob('*')):
         if source.is_dir():
             continue
@@ -191,13 +198,41 @@ if not registrations:
     raise SystemExit('No registered team roles were found.')
 if {entry['config_file'][len('agents/'):] for entry in registrations.values()} != team_roles:
     raise SystemExit('Department role links and team agent registrations differ.')
+
+# Export only Claude profiles that correspond to registered team roles. Other
+# personal Claude agents, settings, plugins, auth and host caches remain local.
+claude_roles = {}
+for name, registration in sorted(registrations.items()):
+    source_role = registration['config_file'][len('agents/'):]
+    department, filename = source_role.split('/', 1)
+    relative = f'agents/{department}/{Path(filename).stem}.md'
+    source = claude / relative
+    if source.is_symlink() or not source.is_file():
+        raise SystemExit(f'Missing or linked Claude team role: {source}')
+    match = re.search(r'^name:\s*(.+?)\s*$', source.read_text(), re.M)
+    if not match:
+        raise SystemExit(f'Claude team role lacks a name: {source}')
+    raw_name = match.group(1)
+    found_name = json.loads(raw_name) if raw_name.startswith('"') else raw_name
+    if found_name != name:
+        raise SystemExit(f'Claude role name differs from Codex registration: {source}')
+    add_file(source, f'claude/{relative}')
+    claude_roles[name] = relative
+add_file(claude / 'CLAUDE.md', 'claude/CLAUDE.md')
+cbm_claude_skill = claude / 'skills/codebase-memory'
+if cbm_claude_skill.is_dir():
+    for source in sorted(cbm_claude_skill.rglob('*')):
+        if source.is_dir() or generated_metadata(source):
+            continue
+        add_file(source, f'claude/skills/codebase-memory/{source.relative_to(cbm_claude_skill).as_posix()}')
+
 if sum(len(data) for data, _ in payload.values()) > 25_000_000:
     raise SystemExit('Shared-team payload exceeds the 25 MB safety limit.')
 
 entries = {name: {'sha256': hashlib.sha256(data).hexdigest(), 'mode': mode}
            for name, (data, mode) in payload.items()}
 manifest = {'format': 1, 'source_home': str(home), 'files': entries,
-            'roles': registrations, 'skills': skills,
+            'roles': registrations, 'skills': skills, 'claude_roles': claude_roles,
             'note': 'Shared team only; no auth, MCP account settings, project state or schedules.'}
 raw_manifest = json.dumps(manifest, indent=2, sort_keys=True).encode() + b'\n'
 fd, temporary_name = tempfile.mkstemp(prefix='.portable-team-', suffix='.partial', dir=output.parent)

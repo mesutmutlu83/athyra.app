@@ -82,13 +82,19 @@ def allowed(relative):
     p = PurePosixPath(relative)
     if not relative or p.is_absolute() or p.as_posix() != relative or '\\' in relative or '..' in p.parts or '.' in p.parts:
         return False
-    if relative in ('team/README.md', 'codex/AGENTS.md', 'codex/rules/team.rules', 'codex/agents/README.md'):
+    if relative in ('team/README.md', 'codex/AGENTS.md', 'codex/rules/team.rules', 'codex/agents/README.md', 'claude/CLAUDE.md'):
         return True
     if p.parts[:2] in (('team', 'departments'), ('team', 'scripts')) and len(p.parts) >= 3:
         return True
+    if p.parts[:3] == ('team', 'templates', 'claude') and len(p.parts) >= 4:
+        return True
     if p.parts[:2] == ('codex', 'agents') and len(p.parts) >= 3 and relative.endswith('.toml'):
         return True
+    if p.parts[:2] == ('claude', 'agents') and len(p.parts) >= 3 and relative.endswith('.md'):
+        return True
     if p.parts[:3] == ('codex', 'skills', 'codebase-memory') and len(p.parts) >= 4:
+        return True
+    if p.parts[:3] == ('claude', 'skills', 'codebase-memory') and len(p.parts) >= 4:
         return True
     return False
 
@@ -129,13 +135,23 @@ if not isinstance(source_home, str) or not source_home.startswith('/') or source
     raise SystemExit('Invalid source home in manifest.')
 roles = manifest.get('roles')
 skills = manifest.get('skills')
+claude_roles = manifest.get('claude_roles', {})
 if not isinstance(roles, dict) or not isinstance(skills, dict):
     raise SystemExit('Invalid role or skill metadata.')
+if not isinstance(claude_roles, dict) or (claude_roles and set(claude_roles) != set(roles)):
+    raise SystemExit('Invalid Claude role metadata.')
+for role, relative in claude_roles.items():
+    if not isinstance(relative, str) or not relative.startswith('agents/') or f'claude/{relative}' not in payload:
+        raise SystemExit(f'Invalid Claude role mapping: {role}')
+if claude_roles and 'claude/CLAUDE.md' not in payload:
+    raise SystemExit('Claude team instructions are missing.')
 
 def destination(name):
     p = PurePosixPath(name)
     if p.parts[0] == 'team':
         return home / '.agents/codex-team' / Path(*p.parts[1:])
+    if p.parts[0] == 'claude':
+        return home / '.claude' / Path(*p.parts[1:])
     return home / '.codex' / Path(*p.parts[1:])
 
 def rebase(data):
@@ -242,6 +258,37 @@ except tomllib.TOMLDecodeError as error:
     raise SystemExit(f'Merged Codex config would be invalid TOML: {error}')
 writes[config_path] = (config.encode(), 0o600)
 
+if claude_roles:
+    claude_settings_path = home / '.claude/settings.json'
+    safe_parent(claude_settings_path)
+    if claude_settings_path.exists() and (claude_settings_path.is_symlink() or not claude_settings_path.is_file()):
+        raise SystemExit(f'Conflicting Claude settings file: {claude_settings_path}')
+    try:
+        claude_settings = json.loads(claude_settings_path.read_text()) if claude_settings_path.exists() else {}
+    except json.JSONDecodeError as error:
+        raise SystemExit(f'Target Claude settings are not valid JSON: {error}')
+    if not isinstance(claude_settings, dict):
+        raise SystemExit('Target Claude settings must be a JSON object.')
+    plugin_configs = claude_settings.setdefault('pluginConfigs', {})
+    if not isinstance(plugin_configs, dict):
+        raise SystemExit('Target Claude pluginConfigs must be an object.')
+    agents_md = plugin_configs.setdefault('agents-md@builtin', {})
+    if not isinstance(agents_md, dict):
+        raise SystemExit('Target Claude agents-md configuration must be an object.')
+    options = agents_md.setdefault('options', {})
+    if not isinstance(options, dict) or options.get('instructionFiles') not in (None, 'claude-md-and-agents-md'):
+        raise SystemExit('Target Claude instructionFiles setting conflicts with project AGENTS.md support.')
+    options['instructionFiles'] = 'claude-md-and-agents-md'
+    writes[claude_settings_path] = ((json.dumps(claude_settings, indent=2, ensure_ascii=False) + '\n').encode(), 0o600)
+    claude_sync_files = {'CLAUDE.md': hashlib.sha256(writes[home / '.claude/CLAUDE.md'][0]).hexdigest()}
+    for relative in claude_roles.values():
+        target = home / '.claude' / relative
+        if '<!-- managed by sync-claude-team.py;' in writes[target][0].decode('utf-8'):
+            claude_sync_files[relative] = hashlib.sha256(writes[target][0]).hexdigest()
+    claude_sync_manifest = home / '.claude/team-sync-manifest.json'
+    safe_parent(claude_sync_manifest)
+    writes[claude_sync_manifest] = ((json.dumps({'format': 1, 'files': claude_sync_files}, indent=2, sort_keys=True) + '\n').encode(), 0o600)
+
 links = {}
 for skill, rel in skills.items():
     if not re.fullmatch(r'[a-z][a-z0-9-]*', skill) or not isinstance(rel, str):
@@ -258,6 +305,16 @@ for skill, rel in skills.items():
         raise SystemExit(f'Conflicting existing skill path: {path}')
     else:
         links[path] = target
+    if claude_roles:
+        claude_path = home / '.claude/skills' / skill
+        safe_parent(claude_path)
+        if claude_path.is_symlink():
+            if claude_path.resolve() != target:
+                raise SystemExit(f'Conflicting existing Claude skill link: {claude_path}')
+        elif claude_path.exists():
+            raise SystemExit(f'Conflicting existing Claude skill path: {claude_path}')
+        else:
+            links[claude_path] = target
 
 # Existing modified files are never silently replaced. A previous install
 # manifest permits safe upgrades only when the old file is unchanged.
@@ -294,6 +351,21 @@ for name in ('codebase-memory.toml', 'codebase-memory-scout.toml',
         if owned_hash != hashlib.sha256(existing).hexdigest() and existing != writes[new_path][0]:
             raise SystemExit(f'Customized legacy Codebase Memory profile needs manual merge: {old_path}')
         legacy_removals.append(old_path)
+for name in ('codebase-memory.md', 'codebase-memory-scout.md',
+             'codebase-memory-auditor.md'):
+    new_path = home / '.claude/agents/engineering' / name
+    old_path = home / '.claude/agents' / name
+    if new_path not in writes:
+        continue
+    safe_parent(old_path)
+    if old_path.is_symlink() or (old_path.exists() and not old_path.is_file()):
+        raise SystemExit(f'Unsafe legacy Claude Codebase Memory profile: {old_path}')
+    if old_path.is_file():
+        existing = old_path.read_bytes()
+        owned_hash = previous_files.get(str(old_path.relative_to(home)))
+        if owned_hash != hashlib.sha256(existing).hexdigest() and existing != writes[new_path][0]:
+            raise SystemExit(f'Customized legacy Claude Codebase Memory profile needs manual merge: {old_path}')
+        legacy_removals.append(old_path)
 changes = {}
 for path, (data, mode) in writes.items():
     if path.exists():
@@ -302,7 +374,8 @@ for path, (data, mode) in writes.items():
         existing = path.read_bytes()
         if existing == data:
             continue
-        if path not in (team_ag, config_path) and previous_files.get(str(path.relative_to(home))) != hashlib.sha256(existing).hexdigest():
+        merged_configs = (team_ag, config_path, home / '.claude/settings.json')
+        if path not in merged_configs and previous_files.get(str(path.relative_to(home))) != hashlib.sha256(existing).hexdigest():
             raise SystemExit(f'Existing customized file needs manual merge: {path}')
     changes[path] = (data, mode)
 
@@ -352,7 +425,7 @@ try:
         str(path.relative_to(home)): hashlib.sha256(data).hexdigest()
         for path, (data, _) in writes.items()},
         'managed_agents_sha256': hashlib.sha256(managed_block.strip().encode()).hexdigest(),
-        'roles': sorted(roles), 'skills': sorted(skills)}
+        'roles': sorted(roles), 'skills': sorted(skills), 'claude_roles': sorted(claude_roles)}
     receipt_text = json.dumps(receipt_data, indent=2, sort_keys=True) + '\n'
     if not receipt.is_file() or receipt.read_text() != receipt_text:
         if not backup.exists():
@@ -377,7 +450,7 @@ except Exception:
         shutil.copy2(old, path)
     raise
 
-print(f'Installed {len(roles)} team roles and {len(skills)} shared skill links into {home}')
+print(f'Installed {len(roles)} Codex roles, {len(claude_roles)} Claude roles, and {len(skills)} shared skills into {home}')
 print(f'Backup of changed existing files: {backup if backup.exists() else "none (already current)"}')
 if '[agents]' in config and re.search(r'^\[agents\]\s*$\n(?:[^\[]*?)^enabled\s*=\s*false\s*$', config, re.M):
     print('Note: target config has agents disabled; preserved that existing setting.', file=sys.stderr)
@@ -410,6 +483,42 @@ ARCHIVE="$archive" TARGET_HOME="$target_home" python3 "$work/install_payload.py"
 if [[ -n "$project" ]]; then
   CODEX_HOME="$target_home/.codex" HOME="$target_home" \
     "$target_home/.agents/codex-team/scripts/setup-codebase-memory.sh" --root "$project"
+  if command -v claude >/dev/null 2>&1; then
+    if python3 - "$target_home" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+home = Path(sys.argv[1])
+config = home / '.claude.json'
+if config.is_symlink():
+    raise SystemExit(f'Refusing symlinked Claude user configuration: {config}')
+try:
+    data = json.loads(config.read_text()) if config.is_file() else {}
+except (OSError, json.JSONDecodeError) as error:
+    raise SystemExit(f'Cannot verify Claude MCP user configuration: {error}')
+if not isinstance(data, dict) or not isinstance(data.get('mcpServers', {}), dict):
+    raise SystemExit('Invalid Claude user MCP configuration shape.')
+server = data.get('mcpServers', {}).get('codebase-memory-mcp')
+if server is None:
+    raise SystemExit(2)
+expected = str(home / '.local/bin/codebase-memory-mcp')
+if not isinstance(server, dict) or server.get('command') != expected or server.get('args', []) != [] or server.get('type', 'stdio') != 'stdio':
+    raise SystemExit('Existing Claude user-scoped Codebase Memory MCP has a different command or arguments; reconcile it manually.')
+print('Claude user-scoped Codebase Memory MCP command verified.')
+PY
+    then
+      :
+    else
+      mcp_check=$?
+      if (( mcp_check != 2 )); then
+        exit "$mcp_check"
+      fi
+      claude mcp add --scope user codebase-memory-mcp -- "$target_home/.local/bin/codebase-memory-mcp"
+    fi
+  else
+    echo 'Claude CLI is absent; install it and register Codebase Memory with the command in README.md.'
+  fi
 fi
 
 echo 'Portable team installation complete. Run codex login on this computer before first use.'
